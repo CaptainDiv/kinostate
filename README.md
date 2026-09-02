@@ -1,4 +1,4 @@
-# Kinostate (Continuity)
+# Kinostate
 
 A decoupled, memory-native AI video agent. Brand memory ("what this brand
 looks and sounds like") is stored locally and portably via

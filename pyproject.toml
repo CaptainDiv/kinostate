@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kinostate"
 version = "0.1.0"
-description = "Continuity — a decoupled, memory-native AI video agent (brand memory as a portable asset, model-agnostic generation)."
+description = "Kinostate — a decoupled, memory-native AI video agent (brand memory as a portable asset, model-agnostic generation)."
 requires-python = ">=3.10"
 dependencies = [
     "sibyl-memory-client>=0.8.0",

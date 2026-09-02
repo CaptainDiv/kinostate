@@ -1,5 +1,5 @@
 # Product Requirements Document
-## Continuity — A Decoupled, Memory-Native AI Video Agent
+## Kinostate — A Decoupled, Memory-Native AI Video Agent
 
 | | |
 |---|---|
@@ -15,7 +15,7 @@
 
 Brands generating video content with AI models (Runway, Pika, Luma, Kling, etc.) lose visual and stylistic consistency between shots — characters change appearance, colors shift, tone drifts. Existing platforms that address this (LTX Studio, InVideo) solve it by locking brand data inside a single proprietary system: switch models, lose your brand's "memory."
 
-**Continuity** decouples the memory of "what this brand looks and sounds like" from the act of generating video. Brand memory lives in a local, SQLite-backed, brand-owned file (powered by Sibyl-Memory) and can be pointed at any current or future video generation model. The product's core bet: **the memory is the asset, not the video generator** — and that asset can be made provable (Base) and monetizable to other AI agents (Virtuals Protocol), not just useful inside one app.
+**Kinostate** decouples the memory of "what this brand looks and sounds like" from the act of generating video. Brand memory lives in a local, SQLite-backed, brand-owned file (powered by Sibyl-Memory) and can be pointed at any current or future video generation model. The product's core bet: **the memory is the asset, not the video generator** — and that asset can be made provable (Base) and monetizable to other AI agents (Virtuals Protocol), not just useful inside one app.
 
 ## 2. Problem Statement
 
@@ -35,7 +35,7 @@ Brands generating video content with AI models (Runway, Pika, Luma, Kling, etc.)
 | G5 | Make brand memory an economic asset other agents can pay to use, not just an internal feature |
 
 ### Non-Goals (v1)
-- Not building a proprietary video generation model — Continuity is a router/compiler/memory layer over third-party models.
+- Not building a proprietary video generation model — Kinostate is a router/compiler/memory layer over third-party models.
 - Not attempting full semantic/visual similarity search (vector embeddings) as a v1 requirement — brand memory is structured, lexical, fact-based data, which FTS5 is well suited for; a hybrid embedding layer is an explicit future consideration, not a launch blocker.
 - Not building a general-purpose video editor (trimming, timeline, effects) — scope is generation + consistency, not post-production.
 
@@ -50,7 +50,7 @@ Brands generating video content with AI models (Runway, Pika, Luma, Kling, etc.)
 
 ## 5. Product Overview
 
-Continuity has five layers:
+Kinostate has five layers:
 
 1. **Memory Layer (Sibyl-Memory)** — the brand's SQLite-backed, five-tier memory store (REFERENCE, WARM, HOT, COLD, ARCHIVE). Local-first, one file per brand tenant.
 2. **Compiler Layer** — translates canonical brand entities (characters, palettes, style rules) into each target model's native conditioning format (Runway References, Pika CREF, Kling Elements, Luma Character Seeds).

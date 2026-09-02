@@ -16,7 +16,7 @@ from kinostate.memory.tenant_store import BrandMemory
 from kinostate.router.router import RoutingPolicy, route_and_generate
 from kinostate.verification.qa import run_qa
 
-app = FastAPI(title="Kinostate", summary="Continuity — memory-native AI video agent")
+app = FastAPI(title="Kinostate", summary="Kinostate — memory-native AI video agent")
 
 
 class OnboardBrandRequest(BaseModel):

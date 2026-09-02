@@ -1,4 +1,4 @@
-"""End-to-end CLI demo of the Continuity pipeline.
+"""End-to-end CLI demo of the Kinostate pipeline.
 
 Onboards a brand, defines a character, requests a shot on one model, then
 requests another shot of the *same* character on a *different* model from a
