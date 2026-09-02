@@ -1,9 +1,12 @@
 """Model selection + generation orchestration (FR-12, FR-13, FR-14).
 
-No live video model API calls happen here yet — `_call_model` is a stub that
-returns a mock output reference so the full pipeline (route -> compile ->
-validate -> "generate" -> journal) is exercisable end-to-end without
-credentials. Swapping in real HTTP calls only touches `_call_model`.
+Most adapters are still stubs — `_call_model` returns a mock output
+reference for them so the full pipeline (route -> compile -> validate ->
+"generate" -> journal) stays exercisable end-to-end without credentials.
+`kling_o1_reference` and `seedance` are real: they're routed through
+fal.ai (see `router.clients.fal_client`) instead of mocked. Wiring up a new
+live model later means one adapter file (exporting its fal model path)
+plus one new REAL_MODELS entry below — nothing else in this module changes.
 """
 
 from __future__ import annotations
@@ -13,11 +16,23 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from kinostate.compiler.adapters import ADAPTERS
+from kinostate.compiler.adapters.kling_o1_reference import FAL_MODEL_PATH as KLING_O1_MODEL_PATH
+from kinostate.compiler.adapters.seedance import FAL_MODEL_PATH as SEEDANCE_MODEL_PATH
 from kinostate.compiler.base_adapter import ModelAdapter
 from kinostate.compiler.canonical import GenerationRequest
 from kinostate.memory.tenant_store import BrandMemory
+from kinostate.router.clients.fal_client import FalError, extract_output_url, run_model
 
 DEFAULT_CONFIDENCE = 0.5
+
+# Adapter name -> its fal.ai model path. Only adapters listed here make a
+# real call; every other adapter name in ADAPTERS still gets the mock://
+# stub below. Unlike wireflow, fal needs no per-model workflow id — just
+# FAL_KEY (checked inside fal_client) and the model's own path.
+REAL_MODELS: dict[str, str] = {
+    "kling_o1_reference": KLING_O1_MODEL_PATH,
+    "seedance": SEEDANCE_MODEL_PATH,
+}
 
 
 @dataclass
@@ -47,8 +62,18 @@ def pick_model(memory: BrandMemory, entity_name: str, policy: RoutingPolicy) -> 
 
 
 def _call_model(adapter: ModelAdapter, payload_body: dict[str, Any]) -> str:
-    """Stub generation call. Returns a mock output asset reference."""
-    return f"mock://{adapter.name}/{uuid.uuid4()}"
+    """Generate via fal.ai for live-integrated models, mock otherwise.
+
+    Raises FalError (e.g. FAL_KEY missing, or the request itself failing)
+    rather than silently falling back to a mock result — a real model that
+    quietly returned fake output would be worse than an explicit error.
+    """
+    model_path = REAL_MODELS.get(adapter.name)
+    if model_path is None:
+        return f"mock://{adapter.name}/{uuid.uuid4()}"
+
+    result = run_model(model_path, payload_body)
+    return extract_output_url(result)
 
 
 def route_and_generate(

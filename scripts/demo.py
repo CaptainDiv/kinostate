@@ -1,15 +1,21 @@
 """End-to-end CLI demo of the Kinostate pipeline.
 
-Onboards a brand, defines a character, requests a shot on one model, then
-requests another shot of the *same* character on a *different* model from a
-brand-new BrandMemory instance — demonstrating PRD Key User Flow #3
-(fresh-session recall across a model switch) — and prints the resulting
-COLD journal.
+Onboards a brand, defines a character, requests a shot on one *real* model
+(via fal.ai), then requests another shot of the *same* character on a
+different real model from a brand-new BrandMemory instance — demonstrating
+PRD Key User Flow #3 (fresh-session recall across a model switch) against
+actual generated video, not a mock:// stub — and prints the resulting COLD
+journal.
+
+Requires FAL_KEY to be set (see .env.example) and spends real fal.ai
+balance on each run — this is the one deliberately minimal live smoke test
+called for in the Milestone 1 plan, not something to run on a loop.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from pathlib import Path
 
@@ -17,6 +23,13 @@ from kinostate.compiler.canonical import Entity, GenerationRequest
 from kinostate.memory.tenant_store import BrandMemory
 from kinostate.router.router import RoutingPolicy, route_and_generate
 from kinostate.verification.qa import run_qa
+
+# Placeholder character photo, publicly reachable so fal.ai can fetch it.
+# Swap this for a real branded reference asset before recording an actual
+# demo — this default only exists so the pipeline is runnable out of the box.
+DEMO_REFERENCE_IMAGE_URL = os.environ.get(
+    "KINOSTATE_DEMO_REFERENCE_IMAGE_URL", "https://picsum.photos/seed/aria/512/512"
+)
 
 
 def main() -> None:
@@ -35,7 +48,7 @@ def main() -> None:
         {
             "kind": "character",
             "description": "Auburn hair, green jacket, brand mascot",
-            "canonical_reference_asset": "sha256:deadbeef",
+            "canonical_reference_asset": DEMO_REFERENCE_IMAGE_URL,
             "approval_status": "approved",
             "confidence": {},
         },
@@ -46,16 +59,16 @@ def main() -> None:
         kind="character",
         name="aria",
         description="Auburn hair, green jacket, brand mascot",
-        canonical_reference_asset="sha256:deadbeef",
+        canonical_reference_asset=DEMO_REFERENCE_IMAGE_URL,
         approval_status="approved",
     )
 
-    # 2. First generation, forced onto Runway.
+    # 2. First generation, forced onto Kling O1 Reference (real, via fal.ai).
     request_one = GenerationRequest(
         brand_id="acme",
         entities=[aria],
         style_prompt="Aria waving at the camera in a sunlit park",
-        model_override="runway",
+        model_override="kling_o1_reference",
     )
     result_one = route_and_generate(memory, request_one, RoutingPolicy())
     qa_one = run_qa(memory, "aria", result_one["model"], result_one["generation_id"])
@@ -64,13 +77,13 @@ def main() -> None:
 
     # 3. "Fresh session": open a brand-new BrandMemory instance (simulating a
     #    new process) and request another shot of the same entity, routed to
-    #    a different model, with no re-entry of brand facts.
+    #    a different real model, with no re-entry of brand facts.
     fresh_session_memory = BrandMemory.open("acme", memory_dir=memory_dir)
     request_two = GenerationRequest(
         brand_id="acme",
         entities=[aria],
         style_prompt="Aria running along the same park path at dusk",
-        model_override="luma",
+        model_override="seedance",
     )
     result_two = route_and_generate(fresh_session_memory, request_two, RoutingPolicy())
     qa_two = run_qa(fresh_session_memory, "aria", result_two["model"], result_two["generation_id"])
