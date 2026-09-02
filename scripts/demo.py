@@ -71,7 +71,7 @@ def main() -> None:
         model_override="kling_o1_reference",
     )
     result_one = route_and_generate(memory, request_one, RoutingPolicy())
-    qa_one = run_qa(memory, "aria", result_one["model"], result_one["generation_id"])
+    qa_one = run_qa(memory, "aria", result_one["model"], result_one["generation_id"], result_one["output_asset"])
     print(f"Generation 1: model={result_one['model']} qa_passed={qa_one.passed}")
     print(f"  output_asset={result_one['output_asset']}\n")
 
@@ -86,7 +86,9 @@ def main() -> None:
         model_override="seedance",
     )
     result_two = route_and_generate(fresh_session_memory, request_two, RoutingPolicy())
-    qa_two = run_qa(fresh_session_memory, "aria", result_two["model"], result_two["generation_id"])
+    qa_two = run_qa(
+        fresh_session_memory, "aria", result_two["model"], result_two["generation_id"], result_two["output_asset"]
+    )
     print(f"Generation 2 (fresh session, different model): model={result_two['model']} qa_passed={qa_two.passed}")
     print(f"  output_asset={result_two['output_asset']}\n")
 

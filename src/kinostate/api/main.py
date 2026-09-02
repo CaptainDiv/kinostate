@@ -130,6 +130,7 @@ def generate(req: GenerateRequestBody) -> dict:
             entity_name=entities[0].name,
             model_name=result["model"],
             generation_id=result["generation_id"],
+            output_asset=result["output_asset"],
         )
 
     return {
