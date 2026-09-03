@@ -1,53 +1,46 @@
-"""Virtuals Protocol / ACP integration (FR-23..25).
+"""Virtuals Protocol / ACP integration (FR-23..25), built on ACP v2 via the acp CLI.
 
-`register_provider` (FR-23) proves the connection only. FR-24/FR-25 are
-real, event-driven handlers rather than callable "issue a grant" stubs —
-research confirmed ACP access grants aren't something Kinostate calls a
-function to create; they're jobs *other* agents initiate against
-Kinostate, dispatched through a live socket connection
-(`economic.clients.virtuals_client.build_listening_client`) to these
-handlers:
+The dashboard now only issues ACP v2 agent identities (own on-chain
+wallet + a browser-approved EC P-256 signer) — the `virtuals-acp` Python
+package this module used to depend on targets v1 (numeric entity_id +
+server-whitelisted wallet) and cannot authenticate as a v2 agent at all.
+Every function here now shells out to Virtuals' own `acp` CLI via
+`economic.clients.acp_cli`, which correctly handles v2's account-
+abstraction signing — see that module's docstring for why.
 
-- `handle_access_request` (FR-24): runs from an `on_new_task` callback
-  when another agent requests scoped, paid, read-only access to a brand's
-  REFERENCE/WARM data.
-- `evaluate_brand_consistency` (FR-25): runs from an `on_evaluate`
-  callback, gating payment release on the same real brand-consistency
-  check already used for QA (FR-15/16/17), not a new heuristic.
-
-Both need an already-registered agent identity (dashboard signup) to ever
-receive real events — see virtuals_client's module docstring. Exact
-service_requirement/deliverable key names below are a Kinostate-defined
-convention (the SDK leaves that shape to whatever the dashboard-configured
-offering declares), not an SDK-mandated schema.
+`register_provider` (FR-23) proves the connection only.
+`handle_access_request` (FR-24) and `evaluate_brand_consistency` (FR-25)
+are real handlers invoked per drained event (see acp_cli.drain_events) —
+there's no persistent socket callback in the CLI-based model, just a
+poll-once call. Exact event/requirement/deliverable key names below are
+a Kinostate-defined convention, not a schema the CLI mandates.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from kinostate.economic.clients.virtuals_client import build_client
+from kinostate.economic.clients.acp_cli import accept_job, complete_job, reject_job, submit_deliverable, whoami
 from kinostate.memory.tenant_store import BrandMemory
 from kinostate.verification.visual_similarity import VisualSimilarityError, check_visual_consistency
 
 ELIGIBLE_GRANT_TIERS = {"reference", "warm"}
+DEFAULT_GRANT_PRICE_USDC = 0.01
 
 
 def register_provider(brand_id: str) -> dict[str, Any]:
     """Connect to Virtuals ACP as a registered provider (FR-23).
 
-    Returns the connected agent's real entity_id/wallet address, plus the
-    PRD-required job schema describing Kinostate's own generation request
-    shape (brand_id, entity_ids, model_preference, resolution, duration,
-    style, budget_ceiling) — that shape is defined here, not by Virtuals'
-    own dashboard-configured service schema.
+    Returns the real active agent's identity (whatever `acp agent whoami`
+    reports for a v2 agent — no more entity_id, that was v1-specific),
+    plus the PRD-required job schema describing Kinostate's own
+    generation request shape (brand_id, entity_ids, model_preference,
+    resolution, duration, style, budget_ceiling) — that shape is defined
+    here, not by Virtuals' own dashboard-configured offering.
     """
-    client = build_client()
-    contract_client = client.contract_clients[0]
+    identity = whoami()
     return {
-        "provider_id": f"acp-{contract_client.entity_id}",
-        "wallet_address": contract_client.agent_wallet_address,
-        "entity_id": contract_client.entity_id,
+        "agent": identity,
         "job_schema": {
             "brand_id": "str",
             "entity_ids": "list[str]",
@@ -61,21 +54,23 @@ def register_provider(brand_id: str) -> dict[str, Any]:
     }
 
 
-def handle_access_request(memory: BrandMemory, job: Any) -> None:
+def handle_access_request(memory: BrandMemory, event: dict[str, Any]) -> None:
     """Accept or reject a scoped, paid, read-only ACP access request (FR-24).
 
-    job.service_requirement is expected to carry {"tier": "reference"|"warm",
-    "key": ...} (reference) or {"tier": "warm", "kind": ..., "name": ...}
+    event is one drained job event (see acp_cli.drain_events), expected
+    to carry {"job_id": ..., "requirement": {"tier": "reference"|"warm",
+    "key": ...}} (reference) or {"tier": "warm", "kind": ..., "name": ...}
     (an entity). Any other tier is rejected outright — FR-24 explicitly
     scopes grants to REFERENCE/WARM only, never HOT/COLD/ARCHIVE. Every
     accepted grant is journaled (brand_id, requester, tier, key) per the
     PRD's own risk mitigation for cross-agent memory access.
     """
-    requirement = job.service_requirement or {}
+    job_id = event["job_id"]
+    requirement = event.get("requirement") or {}
     tier = requirement.get("tier")
 
     if tier not in ELIGIBLE_GRANT_TIERS:
-        job.reject(f"tier {tier!r} is not eligible for an ACP access grant")
+        reject_job(job_id, f"tier {tier!r} is not eligible for an ACP access grant")
         return
 
     if tier == "reference":
@@ -87,44 +82,48 @@ def handle_access_request(memory: BrandMemory, job: Any) -> None:
         data = memory.get_entity(kind, name)
 
     if data is None:
-        job.reject(f"no {tier} data found for the requested key")
+        reject_job(job_id, f"no {tier} data found for the requested key")
         return
 
-    job.accept()
-    job.deliver({"data": data})
+    accept_job(job_id, DEFAULT_GRANT_PRICE_USDC)
+    submit_deliverable(job_id, str({"data": data}))
 
     memory.write_event(
-        acted=[f"granted ACP access to {tier} data for job {getattr(job, 'id', '?')}"],
+        acted=[f"granted ACP access to {tier} data for job {job_id}"],
         extra={
             "brand_id": memory.brand_id,
-            "requesting_agent": getattr(job, "client_address", None),
+            "requesting_agent": event.get("client_address"),
             "tier": tier,
             "requirement": requirement,
         },
     )
 
 
-def evaluate_brand_consistency(memory: BrandMemory, job: Any) -> None:
+def evaluate_brand_consistency(memory: BrandMemory, event: dict[str, Any]) -> None:
     """Gate ACP payment release on real brand-consistency verification (FR-25).
 
-    job's deliverable is expected to carry {"entity_name": ..., "output_asset": ...}.
-    Reuses the same real CLIP-based check already proven for QA rather
-    than a separate heuristic.
+    event's deliverable is expected to carry {"entity_name": ...,
+    "output_asset": ...}. Reuses the same real CLIP-based check already
+    proven for QA rather than a separate heuristic.
     """
-    deliverable = getattr(job, "deliverable", None) or {}
+    job_id = event["job_id"]
+    deliverable = event.get("deliverable") or {}
     entity_name = deliverable.get("entity_name")
     output_asset = deliverable.get("output_asset")
 
     entity = memory.get_entity("character", entity_name) or {}
     reference_asset = entity.get("canonical_reference_asset")
     if not reference_asset:
-        job.evaluate(False, f"no canonical_reference_asset on file for {entity_name!r}")
+        reject_job(job_id, f"no canonical_reference_asset on file for {entity_name!r}")
         return
 
     try:
         passed, _score, reasoning = check_visual_consistency(reference_asset, output_asset)
     except VisualSimilarityError as exc:
-        job.evaluate(False, f"brand-consistency check failed to run: {exc}")
+        reject_job(job_id, f"brand-consistency check failed to run: {exc}")
         return
 
-    job.evaluate(passed, reasoning)
+    if passed:
+        complete_job(job_id, reasoning)
+    else:
+        reject_job(job_id, reasoning)
