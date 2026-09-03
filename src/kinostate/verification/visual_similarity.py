@@ -16,6 +16,7 @@ should mock this module's functions rather than invoke it for real.
 
 from __future__ import annotations
 
+import os
 import tempfile
 from functools import lru_cache
 from pathlib import Path
@@ -27,6 +28,13 @@ from PIL import Image
 
 _MODEL_NAME = "ViT-B-32"
 _PRETRAINED = "openai"
+
+# Set this to a locally-downloaded weights file (.safetensors or .bin) to
+# skip open_clip's own Hugging Face Hub download entirely — useful on
+# networks where that download is unreliable. open_clip's `pretrained`
+# argument accepts a local checkpoint path directly, so no Hub cache
+# trickery is needed.
+_LOCAL_WEIGHTS_ENV_VAR = "KINOSTATE_CLIP_WEIGHTS_PATH"
 
 # Heuristic default, not yet calibrated against real generations (none
 # existed at implementation time — fal.ai wasn't funded yet). Re-tune once
@@ -44,7 +52,8 @@ class VisualSimilarityError(RuntimeError):
 def _get_clip_model() -> tuple[Any, Any]:
     import open_clip
 
-    model, _, preprocess = open_clip.create_model_and_transforms(_MODEL_NAME, pretrained=_PRETRAINED)
+    pretrained = os.environ.get(_LOCAL_WEIGHTS_ENV_VAR) or _PRETRAINED
+    model, _, preprocess = open_clip.create_model_and_transforms(_MODEL_NAME, pretrained=pretrained)
     model.eval()
     return model, preprocess
 
