@@ -8,9 +8,10 @@ pipeline.
 
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
+from kinostate.api.auth import issue_api_key, verify_api_key
 from kinostate.compiler.canonical import Entity, GenerationRequest
 from kinostate.memory.tenant_store import BrandMemory
 from kinostate.router.router import RoutingPolicy, route_and_generate
@@ -62,13 +63,15 @@ def onboard_brand(req: OnboardBrandRequest) -> dict:
             "forbidden_content": req.forbidden_content,
         },
     )
-    return {"brand_id": req.brand_id, "status": "onboarded"}
+    api_key = issue_api_key(memory)
+    return {"brand_id": req.brand_id, "status": "onboarded", "api_key": api_key}
 
 
 @app.post("/brands/{brand_id}/entities")
-def add_entity(brand_id: str, req: AddEntityRequest) -> dict:
+def add_entity(brand_id: str, req: AddEntityRequest, x_api_key: str | None = Header(None, alias="X-API-Key")) -> dict:
     """FR-26: define an initial WARM entity (character/product)."""
     memory = BrandMemory.open(brand_id)
+    verify_api_key(memory, x_api_key)
     entity = Entity(
         kind=req.kind,
         name=req.name,
@@ -92,9 +95,10 @@ def add_entity(brand_id: str, req: AddEntityRequest) -> dict:
 
 
 @app.post("/generate")
-def generate(req: GenerateRequestBody) -> dict:
+def generate(req: GenerateRequestBody, x_api_key: str | None = Header(None, alias="X-API-Key")) -> dict:
     """FR-27: request a shot; route to a model, compile, generate, verify."""
     memory = BrandMemory.open(req.brand_id)
+    verify_api_key(memory, x_api_key)
 
     entities: list[Entity] = []
     for name in req.entity_names:
@@ -143,9 +147,12 @@ def generate(req: GenerateRequestBody) -> dict:
 
 
 @app.post("/brands/{brand_id}/generate/{generation_id}/review")
-def review_generation(brand_id: str, generation_id: str, req: ReviewRequest) -> dict:
+def review_generation(
+    brand_id: str, generation_id: str, req: ReviewRequest, x_api_key: str | None = Header(None, alias="X-API-Key")
+) -> dict:
     """FR-28: brand approves/rejects an output, updating entity approval status."""
     memory = BrandMemory.open(brand_id)
+    verify_api_key(memory, x_api_key)
     entity = memory.get_entity("character", req.entity_name)
     if entity is None:
         raise HTTPException(status_code=404, detail=f"unknown entity {req.entity_name!r}")
