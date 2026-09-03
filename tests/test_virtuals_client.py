@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from kinostate.economic.clients import virtuals_client
-from kinostate.economic.clients.virtuals_client import VirtualsAcpError, build_client
+from kinostate.economic.clients.virtuals_client import VirtualsAcpError, build_client, build_listening_client
 
 _ENV = {
     "VIRTUALS_WALLET_PRIVATE_KEY": "0xabc123",
@@ -79,3 +79,34 @@ def test_build_client_wraps_sdk_errors(monkeypatch):
 
     with pytest.raises(VirtualsAcpError, match="not deployed on-chain"):
         build_client()
+
+
+def test_build_listening_client_passes_callbacks_and_skips_no_socket(monkeypatch):
+    _set_env(monkeypatch)
+    captured = {}
+
+    monkeypatch.setattr(virtuals_client, "ACPContractClientV2", lambda *a, **k: object())
+
+    def _fake_virtuals_acp(acp_contract_clients, on_new_task, on_evaluate, skip_socket_connection):
+        captured["on_new_task"] = on_new_task
+        captured["on_evaluate"] = on_evaluate
+        captured["skip_socket_connection"] = skip_socket_connection
+        return "the-listening-client"
+
+    monkeypatch.setattr(virtuals_client, "VirtualsACP", _fake_virtuals_acp)
+
+    on_new_task = lambda job, memo: None
+    on_evaluate = lambda job: None
+    result = build_listening_client(on_new_task=on_new_task, on_evaluate=on_evaluate)
+
+    assert result == "the-listening-client"
+    assert captured["on_new_task"] is on_new_task
+    assert captured["on_evaluate"] is on_evaluate
+    assert captured["skip_socket_connection"] is False
+
+
+def test_build_listening_client_requires_env_vars(monkeypatch):
+    _set_env(monkeypatch, {"VIRTUALS_ENTITY_ID": None})
+
+    with pytest.raises(VirtualsAcpError, match="VIRTUALS_ENTITY_ID"):
+        build_listening_client()
