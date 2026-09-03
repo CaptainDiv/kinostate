@@ -1,12 +1,12 @@
 """Base / x402 metering + provenance (FR-19..22).
 
-`anchor_provenance` (FR-21) is real: it sends an actual Base Sepolia
-testnet transaction via `economic.clients.base_client`. `meter_call`
-(FR-19, FR-20, FR-22 — x402 payment metering) is still an intentional
-stub, not yet wired to a real x402 facilitator or wallet balance check;
-it keeps returning a clearly-marked mock value with the shape a real
-integration would return, so callers don't need to change again when
-that's made real too.
+Both `anchor_provenance` (FR-21) and `meter_call` (FR-19, FR-22) are real.
+`meter_call` enforces a brand's HOT-state spending policy, then verifies
+and settles a presented x402 payment via `economic.clients.x402_client`
+against the free Base Sepolia testnet facilitator — a caller must pay
+before a generation proceeds. `record_cost` (FR-20) journals the outcome,
+kept separate from `meter_call` since payment happens before a
+generation_id exists yet.
 """
 
 from __future__ import annotations
@@ -15,21 +15,41 @@ import hashlib
 from typing import Any
 
 from kinostate.economic.clients.base_client import send_hash_transaction
+from kinostate.economic.clients.x402_client import build_payment_requirements, verify_and_settle
+from kinostate.memory.tenant_store import BrandMemory
 
 
-def meter_call(model_name: str, estimated_cost_usdc: float) -> dict[str, Any]:
-    """Stub for x402-metered payment authorization (FR-19, FR-22).
+def meter_call(memory: BrandMemory, estimated_cost_usdc: float, payment_payload: str | None = None) -> dict[str, Any]:
+    """Enforce the brand's budget ceiling (FR-22), then verify+settle an x402 payment (FR-19).
 
-    A real implementation checks the brand's HOT-state budget ceiling before
-    authorizing payment, then settles via x402 on Base.
+    Returns {"authorized": False, "reason": ...} if the budget ceiling is
+    exceeded or the payment is missing/invalid (with "payment_required"
+    set to the real payment requirements when no payment was presented at
+    all), or {"authorized": True, "cost_usdc": ..., "tx_hash": ...} on a
+    genuinely settled payment.
     """
-    return {
-        "authorized": True,
-        "cost_usdc": estimated_cost_usdc,
-        "model": model_name,
-        "tx_hash": None,  # would be a real Base tx hash once wired up
-        "mock": True,
-    }
+    policy = memory.get_state("spending_policy") or {}
+    ceiling = policy.get("budget_ceiling_usdc")
+    if ceiling is not None and estimated_cost_usdc > ceiling:
+        return {"authorized": False, "reason": f"cost {estimated_cost_usdc} exceeds budget ceiling {ceiling}"}
+
+    requirements = build_payment_requirements(estimated_cost_usdc)
+    if payment_payload is None:
+        return {"authorized": False, "payment_required": [req.model_dump() for req in requirements]}
+
+    verified, tx_hash, error = verify_and_settle(payment_payload, requirements)
+    if not verified:
+        return {"authorized": False, "reason": error}
+
+    return {"authorized": True, "cost_usdc": estimated_cost_usdc, "tx_hash": tx_hash}
+
+
+def record_cost(memory: BrandMemory, generation_id: str, meter_result: dict[str, Any]) -> None:
+    """Journal a metering outcome linked to a generation (FR-20)."""
+    memory.write_event(
+        acted=[f"metered generation {generation_id}: authorized={meter_result['authorized']}"],
+        extra={"generation_id": generation_id, **meter_result},
+    )
 
 
 def anchor_provenance(output_asset: str, compiled_payload: dict[str, Any]) -> dict[str, Any]:

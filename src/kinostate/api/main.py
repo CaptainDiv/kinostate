@@ -8,16 +8,21 @@ pipeline.
 
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
 from kinostate.api.auth import issue_api_key, verify_api_key
 from kinostate.compiler.canonical import Entity, GenerationRequest
+from kinostate.economic.base_x402 import meter_call, record_cost
 from kinostate.memory.tenant_store import BrandMemory
 from kinostate.router.router import RoutingPolicy, route_and_generate
 from kinostate.verification.qa import run_qa
 
 app = FastAPI(title="Kinostate", summary="Kinostate — memory-native AI video agent")
+
+DEFAULT_GENERATION_PRICE_USDC = 0.05
 
 
 class OnboardBrandRequest(BaseModel):
@@ -95,10 +100,21 @@ def add_entity(brand_id: str, req: AddEntityRequest, x_api_key: str | None = Hea
 
 
 @app.post("/generate")
-def generate(req: GenerateRequestBody, x_api_key: str | None = Header(None, alias="X-API-Key")) -> dict:
+def generate(
+    req: GenerateRequestBody,
+    x_api_key: str | None = Header(None, alias="X-API-Key"),
+    x_payment: str | None = Header(None, alias="PAYMENT-SIGNATURE"),
+) -> dict:
     """FR-27: request a shot; route to a model, compile, generate, verify."""
     memory = BrandMemory.open(req.brand_id)
     verify_api_key(memory, x_api_key)
+
+    meter_result = None
+    if os.environ.get("KINOSTATE_X402_PAY_TO_ADDRESS"):
+        price = float(os.environ.get("KINOSTATE_X402_PRICE_USDC", DEFAULT_GENERATION_PRICE_USDC))
+        meter_result = meter_call(memory, price, payment_payload=x_payment)
+        if not meter_result["authorized"]:
+            raise HTTPException(status_code=402, detail=meter_result)
 
     entities: list[Entity] = []
     for name in req.entity_names:
@@ -137,12 +153,17 @@ def generate(req: GenerateRequestBody, x_api_key: str | None = Header(None, alia
             output_asset=result["output_asset"],
         )
 
+    if meter_result is not None:
+        record_cost(memory, result["generation_id"], meter_result)
+
     return {
         "generation_id": result["generation_id"],
         "model": result["model"],
         "output_asset": result["output_asset"],
         "qa_passed": qa_result.passed if qa_result else None,
         "qa_reasoning": qa_result.reasoning if qa_result else [],
+        "cost_usdc": meter_result["cost_usdc"] if meter_result else None,
+        "payment_tx_hash": meter_result["tx_hash"] if meter_result else None,
     }
 
 
