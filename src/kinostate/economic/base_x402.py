@@ -15,7 +15,7 @@ import hashlib
 from typing import Any
 
 from kinostate.economic.clients.base_client import send_hash_transaction
-from kinostate.economic.clients.x402_client import build_payment_requirements, verify_and_settle
+from kinostate.economic.clients.x402_client import build_payment_requirements, encode_payment_required, verify_and_settle
 from kinostate.memory.tenant_store import BrandMemory
 
 
@@ -35,7 +35,11 @@ def meter_call(memory: BrandMemory, estimated_cost_usdc: float, payment_payload:
 
     requirements = build_payment_requirements(estimated_cost_usdc)
     if payment_payload is None:
-        return {"authorized": False, "payment_required": [req.model_dump() for req in requirements]}
+        return {
+            "authorized": False,
+            "payment_required": [req.model_dump() for req in requirements],
+            "payment_required_header": encode_payment_required(requirements),
+        }
 
     verified, tx_hash, error = verify_and_settle(payment_payload, requirements)
     if not verified:

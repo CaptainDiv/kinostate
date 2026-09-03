@@ -14,7 +14,12 @@ from __future__ import annotations
 
 import os
 
-from x402.http import FacilitatorConfig, HTTPFacilitatorClientSync, decode_payment_signature_header
+from x402.http import (
+    FacilitatorConfig,
+    HTTPFacilitatorClientSync,
+    decode_payment_signature_header,
+    encode_payment_required_header,
+)
 from x402.mechanisms.evm.exact.server import ExactEvmScheme
 from x402.server import PaymentRequirements, ResourceConfig, x402ResourceServerSync
 
@@ -44,6 +49,18 @@ def build_payment_requirements(price_usdc: float) -> list[PaymentRequirements]:
     server = _build_server()
     config = ResourceConfig(scheme="exact", payTo=pay_to, price=f"${price_usdc}", network=NETWORK)
     return server.build_payment_requirements(config)
+
+
+def encode_payment_required(requirements: list[PaymentRequirements]) -> str:
+    """Build the real PAYMENT-REQUIRED header value for a 402 response.
+
+    Without this, a client's own get_payment_required_response() has
+    nothing standards-shaped to parse — a plain JSON body in our own
+    dict shape isn't recognized by the SDK's own client.
+    """
+    server = _build_server()
+    payment_required = server.create_payment_required_response(requirements)
+    return encode_payment_required_header(payment_required)
 
 
 def verify_and_settle(payment_header: str, requirements: list[PaymentRequirements]) -> tuple[bool, str | None, str | None]:

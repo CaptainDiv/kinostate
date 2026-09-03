@@ -5,7 +5,12 @@ from __future__ import annotations
 import pytest
 
 from kinostate.economic.clients import x402_client
-from kinostate.economic.clients.x402_client import X402Error, build_payment_requirements, verify_and_settle
+from kinostate.economic.clients.x402_client import (
+    X402Error,
+    build_payment_requirements,
+    encode_payment_required,
+    verify_and_settle,
+)
 
 
 class _FakeRequirements:
@@ -23,6 +28,9 @@ class _FakeServer:
 
     def build_payment_requirements(self, config):
         return [_FakeRequirements()]
+
+    def create_payment_required_response(self, requirements):
+        return "fake-payment-required-object"
 
     def verify_payment(self, payload, requirements):
         return type("V", (), {"is_valid": self._verify_ok, "invalid_reason": "bad signature"})()
@@ -46,6 +54,15 @@ def test_build_payment_requirements_returns_real_shape(monkeypatch):
 
     assert len(requirements) == 1
     assert requirements[0].model_dump()["scheme"] == "exact"
+
+
+def test_encode_payment_required_returns_header_string(monkeypatch):
+    monkeypatch.setattr(x402_client, "_build_server", lambda: _FakeServer())
+    monkeypatch.setattr(x402_client, "encode_payment_required_header", lambda payment_required: f"encoded:{payment_required}")
+
+    header = encode_payment_required([_FakeRequirements()])
+
+    assert header == "encoded:fake-payment-required-object"
 
 
 def test_verify_and_settle_success(monkeypatch):

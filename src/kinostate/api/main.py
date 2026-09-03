@@ -114,7 +114,10 @@ def generate(
         price = float(os.environ.get("KINOSTATE_X402_PRICE_USDC", DEFAULT_GENERATION_PRICE_USDC))
         meter_result = meter_call(memory, price, payment_payload=x_payment)
         if not meter_result["authorized"]:
-            raise HTTPException(status_code=402, detail=meter_result)
+            headers = {}
+            if "payment_required_header" in meter_result:
+                headers["PAYMENT-REQUIRED"] = meter_result["payment_required_header"]
+            raise HTTPException(status_code=402, detail=meter_result, headers=headers)
 
     entities: list[Entity] = []
     for name in req.entity_names:

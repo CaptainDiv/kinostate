@@ -34,11 +34,13 @@ def test_meter_call_rejects_over_budget(tmp_path):
 def test_meter_call_returns_payment_required_when_unpaid(tmp_path, monkeypatch):
     memory = _open_memory(tmp_path)
     monkeypatch.setattr(base_x402, "build_payment_requirements", lambda price: [_FakeRequirement()])
+    monkeypatch.setattr(base_x402, "encode_payment_required", lambda reqs: "encoded-header-value")
 
     result = base_x402.meter_call(memory, 0.05)
 
     assert result["authorized"] is False
     assert result["payment_required"] == [{"scheme": "exact"}]
+    assert result["payment_required_header"] == "encoded-header-value"
 
 
 def test_meter_call_authorizes_valid_payment(tmp_path, monkeypatch):
