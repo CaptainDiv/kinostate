@@ -1,20 +1,36 @@
-"""Virtuals Protocol / ACP stubs (FR-23..25).
+"""Virtuals Protocol / ACP integration (FR-23..25).
 
-Not wired to a live Virtuals ACP registry — no provider account configured
-for this scaffold. Mirrors the shape a real ACP client would return.
+`register_provider` (FR-23) is real: it connects to Virtuals' ACP via
+`economic.clients.virtuals_client` as an already-dashboard-registered
+agent (registration itself, including the job schema/service offering,
+happens on Virtuals' own dashboard — no SDK call creates it). `grant_access`
+(FR-24, scoped paid access grants via ACP escrow) and the Evaluator role
+(FR-25) remain intentional stubs — they need a funded buyer agent and a
+second counterparty to transact with, out of scope for this pass.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from kinostate.economic.clients.virtuals_client import build_client
+
 
 def register_provider(brand_id: str) -> dict[str, Any]:
-    """Stub ACP Provider registration (FR-23) with the job schema from PRD FR-23:
-    brand_id, entity_ids, model_preference, resolution, duration, style, budget_ceiling.
+    """Connect to Virtuals ACP as a registered provider (FR-23).
+
+    Returns the connected agent's real entity_id/wallet address, plus the
+    PRD-required job schema describing Kinostate's own generation request
+    shape (brand_id, entity_ids, model_preference, resolution, duration,
+    style, budget_ceiling) — that shape is defined here, not by Virtuals'
+    own dashboard-configured service schema.
     """
+    client = build_client()
+    contract_client = client.contract_clients[0]
     return {
-        "provider_id": f"acp-stub-{brand_id}",
+        "provider_id": f"acp-{contract_client.entity_id}",
+        "wallet_address": contract_client.agent_wallet_address,
+        "entity_id": contract_client.entity_id,
         "job_schema": {
             "brand_id": "str",
             "entity_ids": "list[str]",
@@ -24,8 +40,7 @@ def register_provider(brand_id: str) -> dict[str, Any]:
             "style": "str",
             "budget_ceiling": "float",
         },
-        "registered": False,
-        "mock": True,
+        "registered": True,
     }
 
 

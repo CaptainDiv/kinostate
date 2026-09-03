@@ -18,6 +18,7 @@ dependencies = [
     "opencv-python-headless>=4.9",
     "Pillow>=10.0",
     "eth-account>=0.13",
+    "virtuals-acp>=0.3.23",
 ]
 
 [project.optional-dependencies]

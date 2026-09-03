@@ -21,6 +21,7 @@ from pathlib import Path
 
 from kinostate.compiler.canonical import Entity, GenerationRequest
 from kinostate.economic.base_x402 import anchor_provenance
+from kinostate.economic.virtuals_acp import register_provider
 from kinostate.memory.tenant_store import BrandMemory
 from kinostate.router.router import RoutingPolicy, route_and_generate
 from kinostate.verification.qa import run_qa
@@ -85,6 +86,16 @@ def main() -> None:
         print(f"  https://sepolia.basescan.org/tx/{provenance['tx_hash']}\n")
     else:
         print("Skipping provenance anchoring — BASE_WALLET_PRIVATE_KEY not set.\n")
+
+    # 2c. Connect to Virtuals ACP as a registered provider (FR-23) —
+    #     requires a one-time dashboard registration at
+    #     app.virtuals.io/acp/join plus the three VIRTUALS_* env vars;
+    #     skipped with a note if that hasn't been done yet.
+    if os.environ.get("VIRTUALS_WALLET_PRIVATE_KEY"):
+        provider = register_provider("acme")
+        print(f"Connected to Virtuals ACP: entity_id={provider['entity_id']} wallet={provider['wallet_address']}\n")
+    else:
+        print("Skipping Virtuals ACP connection — VIRTUALS_WALLET_PRIVATE_KEY not set.\n")
 
     # 3. "Fresh session": open a brand-new BrandMemory instance (simulating a
     #    new process) and request another shot of the same entity, routed to
