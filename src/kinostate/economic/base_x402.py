@@ -1,15 +1,20 @@
-"""Base / x402 metering + provenance stubs (FR-19..22).
+"""Base / x402 metering + provenance (FR-19..22).
 
-Not wired to a real Base RPC, x402 facilitator, or wallet — no live keys are
-configured for this scaffold. Every function here returns a clearly-marked
-mock value with the same shape a real integration would return, so callers
-(router, API layer) don't need to change when this is made real.
+`anchor_provenance` (FR-21) is real: it sends an actual Base Sepolia
+testnet transaction via `economic.clients.base_client`. `meter_call`
+(FR-19, FR-20, FR-22 — x402 payment metering) is still an intentional
+stub, not yet wired to a real x402 facilitator or wallet balance check;
+it keeps returning a clearly-marked mock value with the shape a real
+integration would return, so callers don't need to change again when
+that's made real too.
 """
 
 from __future__ import annotations
 
 import hashlib
 from typing import Any
+
+from kinostate.economic.clients.base_client import send_hash_transaction
 
 
 def meter_call(model_name: str, estimated_cost_usdc: float) -> dict[str, Any]:
@@ -28,18 +33,17 @@ def meter_call(model_name: str, estimated_cost_usdc: float) -> dict[str, Any]:
 
 
 def anchor_provenance(output_asset: str, compiled_payload: dict[str, Any]) -> dict[str, Any]:
-    """Stub for on-chain provenance anchoring (FR-21).
+    """Anchor a hash of (output asset + compiled payload) on Base Sepolia (FR-21).
 
-    Real implementation hashes (output asset + compiled payload + memory
-    state) and anchors it on Base. Here we compute the hash locally and
-    return a fake tx reference so downstream code (journal, provenance
-    viewer) has something consistent to display.
+    Hashes the two inputs locally, then sends that hash as calldata in a
+    real testnet transaction (see economic.clients.base_client), so the
+    returned tx_hash is independently verifiable on a block explorer.
     """
     digest_input = f"{output_asset}:{compiled_payload}".encode()
     content_hash = hashlib.sha256(digest_input).hexdigest()
+    tx_hash = send_hash_transaction(content_hash)
     return {
         "content_hash": content_hash,
-        "tx_hash": f"0xstub{content_hash[:16]}",
-        "anchored": False,  # flips to True once real Base integration lands
-        "mock": True,
+        "tx_hash": tx_hash,
+        "anchored": True,
     }

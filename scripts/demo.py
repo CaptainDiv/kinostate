@@ -20,6 +20,7 @@ import tempfile
 from pathlib import Path
 
 from kinostate.compiler.canonical import Entity, GenerationRequest
+from kinostate.economic.base_x402 import anchor_provenance
 from kinostate.memory.tenant_store import BrandMemory
 from kinostate.router.router import RoutingPolicy, route_and_generate
 from kinostate.verification.qa import run_qa
@@ -74,6 +75,16 @@ def main() -> None:
     qa_one = run_qa(memory, "aria", result_one["model"], result_one["generation_id"], result_one["output_asset"])
     print(f"Generation 1: model={result_one['model']} qa_passed={qa_one.passed}")
     print(f"  output_asset={result_one['output_asset']}\n")
+
+    # 2b. Anchor this generation's provenance on Base Sepolia (FR-21) —
+    #     requires BASE_WALLET_PRIVATE_KEY to be set and funded with
+    #     testnet ETH; skipped with a note if it isn't configured.
+    if os.environ.get("BASE_WALLET_PRIVATE_KEY"):
+        provenance = anchor_provenance(result_one["output_asset"], result_one["payload"].body)
+        print(f"Provenance anchored: tx_hash={provenance['tx_hash']}")
+        print(f"  https://sepolia.basescan.org/tx/{provenance['tx_hash']}\n")
+    else:
+        print("Skipping provenance anchoring — BASE_WALLET_PRIVATE_KEY not set.\n")
 
     # 3. "Fresh session": open a brand-new BrandMemory instance (simulating a
     #    new process) and request another shot of the same entity, routed to

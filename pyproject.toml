@@ -17,6 +17,7 @@ dependencies = [
     "open-clip-torch>=2.24",
     "opencv-python-headless>=4.9",
     "Pillow>=10.0",
+    "eth-account>=0.13",
 ]
 
 [project.optional-dependencies]
