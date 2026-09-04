@@ -7,15 +7,19 @@ each tracked character in the text itself, e.g. "@Element1" — fal's docs:
 `elements` (a list of {frontal_image_url, reference_image_urls} objects,
 one per tracked character/object). Output: `{"video": {"url": ..., ...}}`.
 
-Each canonical Entity only carries one reference image today
-(`Entity.canonical_reference_asset`), so each element gets a frontal image
-only, with no extra angle images — a limitation of the canonical schema,
-not of this model (which supports several angle images per element).
+Each element now carries every angle image the canonical Entity has
+(`canonical_reference_asset` as the frontal image, `additional_reference_
+images` as `reference_image_urls`) — this model genuinely supports several
+angle images per element, and a single photo alone leaves the model
+guessing about anything not visible in that one frame. The prompt also
+folds in each entity's description and forbidden traits (see
+`base_adapter.describe_entity`), since neither was previously reaching
+the model at all despite being stored in memory.
 """
 
 from __future__ import annotations
 
-from kinostate.compiler.base_adapter import CompiledPayload, ModelAdapter, PayloadValidationError
+from kinostate.compiler.base_adapter import CompiledPayload, ModelAdapter, PayloadValidationError, describe_entity
 from kinostate.compiler.canonical import GenerationRequest
 
 FAL_MODEL_PATH = "fal-ai/kling-video/o1/standard/reference-to-video"
@@ -37,8 +41,15 @@ class KlingO1ReferenceAdapter(ModelAdapter):
             )
 
         tags = " ".join(f"@Element{i + 1}" for i in range(len(request.entities)))
-        body = {
-            "prompt": f"{request.style_prompt} {tags}".strip(),
-            "elements": [{"frontal_image_url": entity.canonical_reference_asset} for entity in request.entities],
-        }
+        context = " ".join(filter(None, (describe_entity(entity) for entity in request.entities)))
+        prompt = " ".join(filter(None, [request.style_prompt, tags, context]))
+
+        elements = []
+        for entity in request.entities:
+            element = {"frontal_image_url": entity.canonical_reference_asset}
+            if entity.additional_reference_images:
+                element["reference_image_urls"] = entity.additional_reference_images
+            elements.append(element)
+
+        body = {"prompt": prompt, "elements": elements}
         return CompiledPayload(model_name=self.name, body=body, entity_count=len(request.entities))

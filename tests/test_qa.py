@@ -13,7 +13,13 @@ from kinostate.verification import qa as qa_module
 from kinostate.verification.qa import run_qa
 
 
-def _seed_memory(tmp_path, *, canonical_reference_asset="https://img.example/aria.png", approval_status="approved"):
+def _seed_memory(
+    tmp_path,
+    *,
+    canonical_reference_asset="https://img.example/aria.png",
+    additional_reference_images=None,
+    approval_status="approved",
+):
     memory = BrandMemory.open("acme", memory_dir=tmp_path / "brands")
     memory.set_reference("palette", {"palette_hex": ["#111111"]})
     memory.set_entity(
@@ -23,6 +29,7 @@ def _seed_memory(tmp_path, *, canonical_reference_asset="https://img.example/ari
             "kind": "character",
             "description": "test",
             "canonical_reference_asset": canonical_reference_asset,
+            "additional_reference_images": additional_reference_images or [],
             "approval_status": approval_status,
             "confidence": {},
         },
@@ -73,6 +80,21 @@ def test_run_qa_fails_when_real_visual_check_fails(tmp_path, monkeypatch):
     result = run_qa(memory, "aria", "seedance", "gen-4", "https://cdn.fal/real.mp4")
 
     assert result.passed is False
+
+
+def test_run_qa_passes_all_reference_images_to_visual_check(tmp_path, monkeypatch):
+    memory = _seed_memory(tmp_path, additional_reference_images=["https://img.example/aria-side.png"])
+    captured = {}
+
+    def _fake_check(reference_assets, video, **kwargs):
+        captured["reference_assets"] = reference_assets
+        return True, 0.9, "similarity 0.9"
+
+    monkeypatch.setattr(qa_module, "check_visual_consistency", _fake_check)
+
+    run_qa(memory, "aria", "seedance", "gen-6", "https://cdn.fal/real.mp4")
+
+    assert captured["reference_assets"] == ["https://img.example/aria.png", "https://img.example/aria-side.png"]
 
 
 def test_run_qa_rejected_entity_short_circuits_before_visual_check(tmp_path, monkeypatch):

@@ -20,8 +20,20 @@ from kinostate.router import router as router_module
 from kinostate.router.clients.fal_client import FalError
 
 
-def _entity(name: str = "aria", reference: str | None = "https://img.example/aria.png") -> Entity:
-    return Entity(kind="character", name=name, description="test entity", canonical_reference_asset=reference)
+def _entity(
+    name: str = "aria",
+    reference: str | None = "https://img.example/aria.png",
+    additional_reference_images: list[str] | None = None,
+    forbidden_traits: list[str] | None = None,
+) -> Entity:
+    return Entity(
+        kind="character",
+        name=name,
+        description="test entity",
+        canonical_reference_asset=reference,
+        additional_reference_images=additional_reference_images or [],
+        forbidden_traits=forbidden_traits or [],
+    )
 
 
 def _request(entities: list[Entity], model_override: str | None = None) -> GenerationRequest:
@@ -32,10 +44,28 @@ def test_kling_o1_reference_compile_shape():
     adapter = KlingO1ReferenceAdapter()
     payload = adapter.compile(_request([_entity()]))
 
-    assert payload.body["prompt"] == "a test shot @Element1"
+    assert payload.body["prompt"] == "a test shot @Element1 test entity"
     assert payload.body["elements"] == [{"frontal_image_url": "https://img.example/aria.png"}]
     assert payload.entity_count == 1
     adapter.validate(payload)  # should not raise
+
+
+def test_kling_o1_reference_includes_additional_angle_images():
+    adapter = KlingO1ReferenceAdapter()
+    entity = _entity(additional_reference_images=["https://img.example/aria-side.png"])
+    payload = adapter.compile(_request([entity]))
+
+    assert payload.body["elements"] == [
+        {"frontal_image_url": "https://img.example/aria.png", "reference_image_urls": ["https://img.example/aria-side.png"]}
+    ]
+
+
+def test_kling_o1_reference_prompt_includes_forbidden_traits():
+    adapter = KlingO1ReferenceAdapter()
+    entity = _entity(forbidden_traits=["sunglasses", "hat"])
+    payload = adapter.compile(_request([entity]))
+
+    assert payload.body["prompt"] == "a test shot @Element1 test entity (avoid: sunglasses, hat)"
 
 
 def test_kling_o1_reference_missing_reference_asset_raises():
@@ -57,7 +87,7 @@ def test_seedance_compile_shape():
     adapter = SeedanceAdapter()
     payload = adapter.compile(_request([_entity()]))
 
-    assert payload.body["prompt"] == "a test shot"
+    assert payload.body["prompt"] == "a test shot test entity"
     assert payload.body["image_urls"] == ["https://img.example/aria.png"]
     adapter.validate(payload)  # should not raise
 
@@ -66,6 +96,28 @@ def test_seedance_missing_reference_asset_raises():
     adapter = SeedanceAdapter()
     with pytest.raises(PayloadValidationError, match="canonical_reference_asset"):
         adapter.compile(_request([_entity(reference=None)]))
+
+
+def test_seedance_includes_additional_angle_images():
+    adapter = SeedanceAdapter()
+    entity = _entity(additional_reference_images=["https://img.example/aria-side.png", "https://img.example/aria-back.png"])
+    payload = adapter.compile(_request([entity]))
+
+    assert payload.body["image_urls"] == [
+        "https://img.example/aria.png",
+        "https://img.example/aria-side.png",
+        "https://img.example/aria-back.png",
+    ]
+    adapter.validate(payload)  # should not raise, 3 images is well under the cap
+
+
+def test_seedance_total_image_count_over_cap_raises():
+    adapter = SeedanceAdapter()
+    entity = _entity(additional_reference_images=[f"https://img.example/aria-{i}.png" for i in range(9)])
+    payload = adapter.compile(_request([entity]))  # 1 primary + 9 additional = 10 total
+
+    with pytest.raises(PayloadValidationError, match="at most 9 total reference images"):
+        adapter.validate(payload)
 
 
 def test_call_model_dispatches_real_model_to_fal(monkeypatch):

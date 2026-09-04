@@ -10,7 +10,21 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
-from kinostate.compiler.canonical import GenerationRequest
+from kinostate.compiler.canonical import Entity, GenerationRequest
+
+
+def describe_entity(entity: Entity) -> str:
+    """Render an entity's description + forbidden traits as prompt text.
+
+    Reference images alone leave the model with no textual reinforcement
+    of what an entity looks like or what to avoid — this closes that gap
+    (previously the description/forbidden_traits fields were stored but
+    never actually used in a compiled prompt).
+    """
+    parts = [entity.description] if entity.description else []
+    if entity.forbidden_traits:
+        parts.append(f"(avoid: {', '.join(entity.forbidden_traits)})")
+    return " ".join(parts)
 
 
 class PayloadValidationError(ValueError):

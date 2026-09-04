@@ -89,8 +89,10 @@ def _check_character_match(entity: dict, entity_name: str, output_asset: str) ->
     if output_asset.startswith("mock://"):
         return True, f"character match check skipped — {output_asset!r} is a mocked output, not a real video"
 
+    reference_assets = [reference_asset, *entity.get("additional_reference_images", [])]
+
     try:
-        passed, _score, reasoning = check_visual_consistency(reference_asset, output_asset)
+        passed, _score, reasoning = check_visual_consistency(reference_assets, output_asset)
     except VisualSimilarityError as exc:
         return False, f"character match check failed to run: {exc}"
 

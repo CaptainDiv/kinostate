@@ -27,7 +27,8 @@ class Entity:
     kind: str  # "character" | "product" | "location"
     name: str
     description: str
-    canonical_reference_asset: str | None = None  # hash/URI of the approved reference image
+    canonical_reference_asset: str | None = None  # hash/URI of the primary/frontal approved reference image
+    additional_reference_images: list[str] = field(default_factory=list)  # extra angles/poses of the same entity
     forbidden_traits: list[str] = field(default_factory=list)
     approval_status: str = "pending"  # "pending" | "approved" | "rejected"
 

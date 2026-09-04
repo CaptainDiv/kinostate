@@ -27,11 +27,17 @@ from kinostate.memory.tenant_store import BrandMemory
 from kinostate.router.router import RoutingPolicy, route_and_generate
 from kinostate.verification.qa import run_qa
 
-# Placeholder character photo, publicly reachable so fal.ai can fetch it.
-# Swap this for a real branded reference asset before recording an actual
-# demo — this default only exists so the pipeline is runnable out of the box.
+# Placeholder character photos, publicly reachable so fal.ai can fetch them.
+# Swap these for real branded reference assets before recording an actual
+# demo — these defaults only exist so the pipeline is runnable out of the
+# box. The two picsum seeds are unrelated stock photos, not genuinely two
+# angles of one character — they exist to exercise the multi-reference-
+# image code path, not to look consistent themselves.
 DEMO_REFERENCE_IMAGE_URL = os.environ.get(
     "KINOSTATE_DEMO_REFERENCE_IMAGE_URL", "https://picsum.photos/seed/aria/512/512"
+)
+DEMO_ADDITIONAL_REFERENCE_IMAGE_URL = os.environ.get(
+    "KINOSTATE_DEMO_ADDITIONAL_REFERENCE_IMAGE_URL", "https://picsum.photos/seed/aria-angle2/512/512"
 )
 
 
@@ -52,6 +58,8 @@ def main() -> None:
             "kind": "character",
             "description": "Auburn hair, green jacket, brand mascot",
             "canonical_reference_asset": DEMO_REFERENCE_IMAGE_URL,
+            "additional_reference_images": [DEMO_ADDITIONAL_REFERENCE_IMAGE_URL],
+            "forbidden_traits": ["sunglasses", "hat"],
             "approval_status": "approved",
             "confidence": {},
         },
@@ -63,6 +71,8 @@ def main() -> None:
         name="aria",
         description="Auburn hair, green jacket, brand mascot",
         canonical_reference_asset=DEMO_REFERENCE_IMAGE_URL,
+        additional_reference_images=[DEMO_ADDITIONAL_REFERENCE_IMAGE_URL],
+        forbidden_traits=["sunglasses", "hat"],
         approval_status="approved",
     )
 

@@ -38,6 +38,7 @@ class AddEntityRequest(BaseModel):
     name: str
     description: str
     canonical_reference_asset: str | None = None
+    additional_reference_images: list[str] = []
     forbidden_traits: list[str] = []
 
 
@@ -82,6 +83,7 @@ def add_entity(brand_id: str, req: AddEntityRequest, x_api_key: str | None = Hea
         name=req.name,
         description=req.description,
         canonical_reference_asset=req.canonical_reference_asset,
+        additional_reference_images=req.additional_reference_images,
         forbidden_traits=req.forbidden_traits,
     )
     memory.set_entity(
@@ -91,6 +93,7 @@ def add_entity(brand_id: str, req: AddEntityRequest, x_api_key: str | None = Hea
             "kind": entity.kind,
             "description": entity.description,
             "canonical_reference_asset": entity.canonical_reference_asset,
+            "additional_reference_images": entity.additional_reference_images,
             "forbidden_traits": entity.forbidden_traits,
             "approval_status": entity.approval_status,
             "confidence": {},
@@ -130,6 +133,7 @@ def generate(
                 name=name,
                 description=body.get("description", ""),
                 canonical_reference_asset=body.get("canonical_reference_asset"),
+                additional_reference_images=body.get("additional_reference_images", []),
                 forbidden_traits=body.get("forbidden_traits", []),
                 approval_status=body.get("approval_status", "pending"),
             )

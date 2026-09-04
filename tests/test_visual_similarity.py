@@ -75,7 +75,32 @@ def test_check_visual_consistency_passes_when_best_frame_matches(monkeypatch, tm
 
     assert passed is True
     assert score == pytest.approx(1.0)
-    assert "best of 2 sampled frames" in reasoning
+    assert "best of 1 reference image(s) x 2 sampled frames" in reasoning
+
+
+def test_check_visual_consistency_multiple_references_uses_best_match(monkeypatch, tmp_path):
+    # Second reference (a different angle) matches the output frame well
+    # even though the first reference doesn't — should still pass, since a
+    # generation matching any one reference photo is a genuine match.
+    embeddings = {
+        "reference_front": torch.tensor([[1.0, 0.0]]),
+        "reference_side": torch.tensor([[0.0, 1.0]]),
+        "frame": torch.tensor([[0.0, 1.0]]),
+    }
+
+    downloaded_refs = iter(["reference_front", "reference_side"])
+    monkeypatch.setattr(visual_similarity, "_download", lambda url, suffix: tmp_path / suffix.lstrip("."))
+    monkeypatch.setattr(visual_similarity, "sample_frames", lambda path: ["frame"])
+    monkeypatch.setattr(visual_similarity.Image, "open", lambda path: _FakeImage(next(downloaded_refs)))
+    monkeypatch.setattr(visual_similarity, "_embed_image", lambda image: embeddings[str(image)])
+
+    passed, score, reasoning = check_visual_consistency(
+        ["http://ref-front", "http://ref-side"], "http://video", threshold=0.75
+    )
+
+    assert passed is True
+    assert score == pytest.approx(1.0)
+    assert "best of 2 reference image(s) x 1 sampled frames" in reasoning
 
 
 def test_check_visual_consistency_fails_below_threshold(monkeypatch, tmp_path):

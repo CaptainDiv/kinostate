@@ -106,33 +106,45 @@ def sample_frames(video_path: Path, count: int = FRAME_SAMPLE_COUNT) -> list[Ima
 
 
 def check_visual_consistency(
-    reference_image_url: str,
+    reference_image_urls: str | list[str],
     output_video_url: str,
     *,
     threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
 ) -> tuple[bool, float, str]:
-    """Compare a reference image to sampled frames of a generated video.
+    """Compare one or more reference images to sampled frames of a generated video.
 
     Returns (passed, best_similarity_score, reasoning). Uses the *best*
-    (max) similarity across sampled frames rather than the average, since a
-    character only needs to be clearly recognizable in some frames, not
-    every single one — camera angle and motion naturally vary similarity
-    across a clip even when the character itself is consistent.
+    match across every (reference image x sampled frame) pair rather than
+    an average, in both directions: a character only needs to be clearly
+    recognizable in some frames, not every single one (camera angle and
+    motion naturally vary similarity across a clip even when the character
+    itself is consistent) — and a generation shot from an angle matching
+    any one of several reference photos is a genuine match, not a miss
+    just because it doesn't match the *first* reference photo.
     """
-    reference_path = _download(reference_image_url, suffix=".ref")
+    if isinstance(reference_image_urls, str):
+        reference_image_urls = [reference_image_urls]
+
+    reference_paths = [_download(url, suffix=".ref") for url in reference_image_urls]
     video_path = _download(output_video_url, suffix=".mp4")
     try:
-        reference_embedding = _embed_image(Image.open(reference_path).convert("RGB"))
+        reference_embeddings = [_embed_image(Image.open(path).convert("RGB")) for path in reference_paths]
         frames = sample_frames(video_path)
-        similarities = [float((reference_embedding @ _embed_image(frame).T).item()) for frame in frames]
+        frame_embeddings = [_embed_image(frame) for frame in frames]
+        similarities = [
+            float((reference_embedding @ frame_embedding.T).item())
+            for reference_embedding in reference_embeddings
+            for frame_embedding in frame_embeddings
+        ]
     finally:
-        reference_path.unlink(missing_ok=True)
+        for path in reference_paths:
+            path.unlink(missing_ok=True)
         video_path.unlink(missing_ok=True)
 
     best_score = max(similarities)
     passed = best_score >= threshold
     reasoning = (
-        f"visual similarity (CLIP, best of {len(similarities)} sampled frames): "
-        f"{best_score:.3f} {'>=' if passed else '<'} threshold {threshold}"
+        f"visual similarity (CLIP, best of {len(reference_paths)} reference image(s) x "
+        f"{len(frames)} sampled frames): {best_score:.3f} {'>=' if passed else '<'} threshold {threshold}"
     )
     return passed, best_score, reasoning
