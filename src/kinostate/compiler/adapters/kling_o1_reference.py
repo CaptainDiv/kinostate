@@ -15,14 +15,26 @@ guessing about anything not visible in that one frame. The prompt also
 folds in each entity's description and forbidden traits (see
 `base_adapter.describe_entity`), since neither was previously reaching
 the model at all despite being stored in memory.
+
+`duration` (confirmed via fal.ai's live OpenAPI schema, not the docs
+pages — a websearch sanity-check caught itself hallucinating values for
+this exact field) is a string enum "3".."10" seconds, default "5".
 """
 
 from __future__ import annotations
 
-from kinostate.compiler.base_adapter import CompiledPayload, ModelAdapter, PayloadValidationError, describe_entity
+from kinostate.compiler.base_adapter import (
+    CompiledPayload,
+    ModelAdapter,
+    PayloadValidationError,
+    describe_entity,
+    resolve_duration_seconds,
+)
 from kinostate.compiler.canonical import GenerationRequest
 
 FAL_MODEL_PATH = "fal-ai/kling-video/o1/standard/reference-to-video"
+
+ALLOWED_DURATIONS_SECONDS = {str(s) for s in range(3, 11)}  # "3".."10", per fal's OpenAPI schema
 
 
 class KlingO1ReferenceAdapter(ModelAdapter):
@@ -40,6 +52,8 @@ class KlingO1ReferenceAdapter(ModelAdapter):
                 f"entity; missing for {missing}"
             )
 
+        duration = resolve_duration_seconds(self.name, request.duration_seconds, ALLOWED_DURATIONS_SECONDS)
+
         tags = " ".join(f"@Element{i + 1}" for i in range(len(request.entities)))
         context = " ".join(filter(None, (describe_entity(entity) for entity in request.entities)))
         prompt = " ".join(filter(None, [request.style_prompt, tags, context]))
@@ -51,5 +65,5 @@ class KlingO1ReferenceAdapter(ModelAdapter):
                 element["reference_image_urls"] = entity.additional_reference_images
             elements.append(element)
 
-        body = {"prompt": prompt, "elements": elements}
+        body = {"prompt": prompt, "elements": elements, "duration": duration}
         return CompiledPayload(model_name=self.name, body=body, entity_count=len(request.entities))

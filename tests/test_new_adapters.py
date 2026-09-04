@@ -36,8 +36,16 @@ def _entity(
     )
 
 
-def _request(entities: list[Entity], model_override: str | None = None) -> GenerationRequest:
-    return GenerationRequest(brand_id="acme", entities=entities, style_prompt="a test shot", model_override=model_override)
+def _request(
+    entities: list[Entity], model_override: str | None = None, duration_seconds: float = 4.0
+) -> GenerationRequest:
+    return GenerationRequest(
+        brand_id="acme",
+        entities=entities,
+        style_prompt="a test shot",
+        model_override=model_override,
+        duration_seconds=duration_seconds,
+    )
 
 
 def test_kling_o1_reference_compile_shape():
@@ -66,6 +74,19 @@ def test_kling_o1_reference_prompt_includes_forbidden_traits():
     payload = adapter.compile(_request([entity]))
 
     assert payload.body["prompt"] == "a test shot @Element1 test entity (avoid: sunglasses, hat)"
+
+
+def test_kling_o1_reference_accepts_its_real_minimum_duration():
+    adapter = KlingO1ReferenceAdapter()
+    payload = adapter.compile(_request([_entity()], duration_seconds=3))
+
+    assert payload.body["duration"] == "3"
+
+
+def test_kling_o1_reference_rejects_duration_outside_real_range():
+    adapter = KlingO1ReferenceAdapter()
+    with pytest.raises(PayloadValidationError, match="duration_seconds"):
+        adapter.compile(_request([_entity()], duration_seconds=11))
 
 
 def test_kling_o1_reference_missing_reference_asset_raises():
@@ -118,6 +139,21 @@ def test_seedance_total_image_count_over_cap_raises():
 
     with pytest.raises(PayloadValidationError, match="at most 9 total reference images"):
         adapter.validate(payload)
+
+
+def test_seedance_accepts_its_real_minimum_duration():
+    adapter = SeedanceAdapter()
+    payload = adapter.compile(_request([_entity()], duration_seconds=4))
+
+    assert payload.body["duration"] == "4"
+
+
+def test_seedance_rejects_duration_below_its_real_floor():
+    # Seedance's real floor is 4s, unlike Kling O1 Reference's 3s -- the
+    # two models don't share one valid duration range.
+    adapter = SeedanceAdapter()
+    with pytest.raises(PayloadValidationError, match="duration_seconds"):
+        adapter.compile(_request([_entity()], duration_seconds=3))
 
 
 def test_call_model_dispatches_real_model_to_fal(monkeypatch):

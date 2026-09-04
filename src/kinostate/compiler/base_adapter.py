@@ -35,6 +35,24 @@ class PayloadValidationError(ValueError):
     """
 
 
+def resolve_duration_seconds(model_name: str, duration_seconds: float, allowed_seconds: set[str]) -> str:
+    """Round to the nearest whole second and check it against a model's real allowed set.
+
+    Each real model's duration field is a fixed enum of string seconds
+    (confirmed against fal.ai's own OpenAPI schema), not a free continuous
+    number, and the two live models don't share one valid range — failing
+    loudly here (FR-10) avoids silently clamping to a value the caller
+    never asked for, or wasting a paid API call on a value fal.ai would
+    reject anyway.
+    """
+    duration = str(round(duration_seconds))
+    if duration not in allowed_seconds:
+        raise PayloadValidationError(
+            f"{model_name} only supports duration_seconds in {sorted(allowed_seconds, key=int)}, got {duration_seconds}"
+        )
+    return duration
+
+
 @dataclass
 class CompiledPayload:
     model_name: str
