@@ -26,10 +26,25 @@ import subprocess
 from typing import Any
 
 DEFAULT_TESTNET_CHAIN_ID = 84532  # Base Sepolia
+DEFAULT_MAINNET_CHAIN_ID = 8453  # Base
 
 
 class AcpCliError(RuntimeError):
     """Raised when the acp CLI exits non-zero or returns unparseable output."""
+
+
+def _default_chain_id() -> int:
+    """Derive the default chain from the same IS_TESTNET flag _run_acp uses for auth.
+
+    A hardcoded chain_id default independent of IS_TESTNET is a real bug,
+    not just an inconvenience: authenticating on one network (mainnet or
+    testnet) and then defaulting a job action to the *other* network's
+    chain ID fails outright — confirmed live when a real mainnet job's
+    accept_job() call defaulted to Base Sepolia's chain ID instead of
+    Base mainnet's.
+    """
+    is_testnet = os.environ.get("IS_TESTNET", "true") == "true"
+    return DEFAULT_TESTNET_CHAIN_ID if is_testnet else DEFAULT_MAINNET_CHAIN_ID
 
 
 def _run_acp(*args: str) -> Any:
@@ -65,6 +80,19 @@ def whoami() -> dict:
     return _run_acp("agent", "whoami")
 
 
+def use_agent(agent_id: str) -> dict:
+    """Set the CLI's active agent context for all subsequent commands."""
+    return _run_acp("agent", "use", "--agent-id", agent_id)
+
+
+def create_custom_job(provider_address: str, description: str, chain_id: int | None = None) -> dict:
+    """Create a freeform on-chain job as the currently active (buyer) agent."""
+    chain_id = chain_id if chain_id is not None else _default_chain_id()
+    return _run_acp(
+        "client", "create-custom-job", "--provider", provider_address, "--description", description, "--chain-id", str(chain_id)
+    )
+
+
 def drain_events(events_file: str, limit: int = 10) -> list[dict]:
     """FR-24 trigger point: read and remove pending events from a listen output file.
 
@@ -76,21 +104,25 @@ def drain_events(events_file: str, limit: int = 10) -> list[dict]:
     return result if isinstance(result, list) else result.get("events", [])
 
 
-def accept_job(job_id: str, amount_usdc: float, chain_id: int = DEFAULT_TESTNET_CHAIN_ID) -> dict:
+def accept_job(job_id: str, amount_usdc: float, chain_id: int | None = None) -> dict:
     """FR-24: propose a budget for a job (the accept-equivalent on the provider side)."""
+    chain_id = chain_id if chain_id is not None else _default_chain_id()
     return _run_acp("provider", "set-budget", "--job-id", job_id, "--amount", str(amount_usdc), "--chain-id", str(chain_id))
 
 
-def submit_deliverable(job_id: str, deliverable: str, chain_id: int = DEFAULT_TESTNET_CHAIN_ID) -> dict:
+def submit_deliverable(job_id: str, deliverable: str, chain_id: int | None = None) -> dict:
     """FR-24: deliver the fulfilled job content."""
+    chain_id = chain_id if chain_id is not None else _default_chain_id()
     return _run_acp("provider", "submit", "--job-id", job_id, "--deliverable", deliverable, "--chain-id", str(chain_id))
 
 
-def complete_job(job_id: str, reason: str, chain_id: int = DEFAULT_TESTNET_CHAIN_ID) -> dict:
+def complete_job(job_id: str, reason: str, chain_id: int | None = None) -> dict:
     """FR-25: approve and complete a job as evaluator, releasing escrow."""
+    chain_id = chain_id if chain_id is not None else _default_chain_id()
     return _run_acp("client", "complete", "--job-id", job_id, "--reason", reason, "--chain-id", str(chain_id))
 
 
-def reject_job(job_id: str, reason: str, chain_id: int = DEFAULT_TESTNET_CHAIN_ID) -> dict:
+def reject_job(job_id: str, reason: str, chain_id: int | None = None) -> dict:
     """FR-25: reject a job/deliverable as evaluator, withholding escrow."""
+    chain_id = chain_id if chain_id is not None else _default_chain_id()
     return _run_acp("client", "reject", "--job-id", job_id, "--reason", reason, "--chain-id", str(chain_id))

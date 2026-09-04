@@ -21,25 +21,47 @@ def test_register_provider_returns_real_identity(monkeypatch):
     assert result["job_schema"]["brand_id"] == "str"
 
 
-def test_handle_access_request_delivers_eligible_reference_tier(tmp_path, monkeypatch):
+def test_handle_access_request_accepts_eligible_reference_tier(tmp_path, monkeypatch):
     memory = _open_memory(tmp_path)
     memory.set_reference("palette", {"palette_hex": ["#111111"]})
 
     accepted = {}
-    delivered = {}
     monkeypatch.setattr(virtuals_acp, "accept_job", lambda job_id, price: accepted.setdefault("job_id", job_id))
-    monkeypatch.setattr(
-        virtuals_acp, "submit_deliverable", lambda job_id, deliverable: delivered.setdefault("deliverable", deliverable)
-    )
     monkeypatch.setattr(virtuals_acp, "reject_job", lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not reject")))
 
     event = {"job_id": "job-1", "requirement": {"tier": "reference", "key": "palette"}}
     virtuals_acp.handle_access_request(memory, event)
 
     assert accepted["job_id"] == "job-1"
+
+
+def test_deliver_access_grant_submits_and_journals(tmp_path, monkeypatch):
+    memory = _open_memory(tmp_path)
+    memory.set_reference("palette", {"palette_hex": ["#111111"]})
+
+    delivered = {}
+    monkeypatch.setattr(
+        virtuals_acp, "submit_deliverable", lambda job_id, deliverable: delivered.setdefault("deliverable", deliverable)
+    )
+    monkeypatch.setattr(virtuals_acp, "reject_job", lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not reject")))
+
+    event = {"job_id": "job-1", "requirement": {"tier": "reference", "key": "palette"}}
+    virtuals_acp.deliver_access_grant(memory, event)
+
     assert "palette_hex" in delivered["deliverable"]
     events = memory.read_events(limit=10)
     assert any(e["extra"].get("tier") == "reference" for e in events)
+
+
+def test_deliver_access_grant_rejects_missing_data(tmp_path, monkeypatch):
+    memory = _open_memory(tmp_path)
+    rejected = {}
+    monkeypatch.setattr(virtuals_acp, "reject_job", lambda job_id, reason: rejected.update(job_id=job_id, reason=reason))
+
+    event = {"job_id": "job-1", "requirement": {"tier": "reference", "key": "nonexistent"}}
+    virtuals_acp.deliver_access_grant(memory, event)
+
+    assert rejected["job_id"] == "job-1"
 
 
 def test_handle_access_request_rejects_ineligible_tier(tmp_path, monkeypatch):

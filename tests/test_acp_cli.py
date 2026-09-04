@@ -12,9 +12,11 @@ from kinostate.economic.clients.acp_cli import (
     AcpCliError,
     accept_job,
     complete_job,
+    create_custom_job,
     drain_events,
     reject_job,
     submit_deliverable,
+    use_agent,
     whoami,
 )
 
@@ -24,6 +26,7 @@ _FAKE_ACP_PATH = "/fake/acp"
 @pytest.fixture(autouse=True)
 def _mock_acp_executable(monkeypatch):
     monkeypatch.setattr(shutil, "which", lambda name: _FAKE_ACP_PATH)
+    monkeypatch.delenv("IS_TESTNET", raising=False)
 
 
 class _FakeCompletedProcess:
@@ -123,6 +126,58 @@ def test_submit_deliverable_builds_expected_argv(monkeypatch):
         _FAKE_ACP_PATH, "provider", "submit", "--job-id", "job-1", "--deliverable", "some deliverable text",
         "--chain-id", str(acp_cli.DEFAULT_TESTNET_CHAIN_ID), "--json",
     ]
+
+
+def test_use_agent_builds_expected_argv(monkeypatch):
+    captured = {}
+
+    def _fake_run(args, capture_output, text, env):
+        captured["args"] = args
+        return _FakeCompletedProcess(stdout='{"success": true}')
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+    result = use_agent("agent-123")
+
+    assert result == {"success": True}
+    assert captured["args"] == [_FAKE_ACP_PATH, "agent", "use", "--agent-id", "agent-123", "--json"]
+
+
+def test_create_custom_job_builds_expected_argv(monkeypatch):
+    captured = {}
+
+    def _fake_run(args, capture_output, text, env):
+        captured["args"] = args
+        return _FakeCompletedProcess(stdout='{"jobId": "1"}')
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+    result = create_custom_job("0xProvider", "some description", chain_id=8453)
+
+    assert result == {"jobId": "1"}
+    assert captured["args"] == [
+        _FAKE_ACP_PATH, "client", "create-custom-job", "--provider", "0xProvider",
+        "--description", "some description", "--chain-id", "8453", "--json",
+    ]
+
+
+def test_chain_id_follows_is_testnet_not_a_hardcoded_default(monkeypatch):
+    # Regression test: accept_job used to default chain_id to a hardcoded
+    # testnet constant regardless of IS_TESTNET, which fails outright
+    # against a real mainnet job (confirmed live against job #76023).
+    captured = {}
+
+    def _fake_run(args, capture_output, text, env):
+        captured["args"] = args
+        return _FakeCompletedProcess(stdout="{}")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    monkeypatch.setenv("IS_TESTNET", "false")
+
+    accept_job("job-1", 0.05)
+
+    assert "--chain-id" in captured["args"]
+    assert captured["args"][captured["args"].index("--chain-id") + 1] == str(acp_cli.DEFAULT_MAINNET_CHAIN_ID)
 
 
 def test_complete_and_reject_job_build_expected_argv(monkeypatch):

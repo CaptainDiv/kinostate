@@ -9,11 +9,15 @@ Every function here now shells out to Virtuals' own `acp` CLI via
 abstraction signing — see that module's docstring for why.
 
 `register_provider` (FR-23) proves the connection only.
-`handle_access_request` (FR-24) and `evaluate_brand_consistency` (FR-25)
-are real handlers invoked per drained event (see acp_cli.drain_events) —
-there's no persistent socket callback in the CLI-based model, just a
-poll-once call. Exact event/requirement/deliverable key names below are
-a Kinostate-defined convention, not a schema the CLI mandates.
+`handle_access_request`/`deliver_access_grant` (FR-24) and
+`evaluate_brand_consistency` (FR-25) are real handlers invoked per
+drained event (see acp_cli.drain_events) — there's no persistent socket
+callback in the CLI-based model, just a poll-once call. Accept and
+deliver are two separate functions, not one: confirmed live against a
+real job that the protocol itself rejects a deliverable submitted before
+the buyer funds the accepted budget. Exact event/requirement/deliverable
+key names below are a Kinostate-defined convention, not a schema the CLI
+mandates.
 """
 
 from __future__ import annotations
@@ -54,16 +58,30 @@ def register_provider(brand_id: str) -> dict[str, Any]:
     }
 
 
-def handle_access_request(memory: BrandMemory, event: dict[str, Any]) -> None:
-    """Accept or reject a scoped, paid, read-only ACP access request (FR-24).
+def _fetch_grant_data(memory: BrandMemory, requirement: dict[str, Any]) -> Any:
+    tier = requirement.get("tier")
+    if tier == "reference":
+        return memory.get_reference(requirement.get("key"))
+    if tier == "warm":
+        return memory.get_entity(requirement.get("kind", "character"), requirement.get("name"))
+    return None
 
-    event is one drained job event (see acp_cli.drain_events), expected
-    to carry {"job_id": ..., "requirement": {"tier": "reference"|"warm",
-    "key": ...}} (reference) or {"tier": "warm", "kind": ..., "name": ...}
-    (an entity). Any other tier is rejected outright — FR-24 explicitly
-    scopes grants to REFERENCE/WARM only, never HOT/COLD/ARCHIVE. Every
-    accepted grant is journaled (brand_id, requester, tier, key) per the
-    PRD's own risk mitigation for cross-agent memory access.
+
+def handle_access_request(memory: BrandMemory, event: dict[str, Any]) -> None:
+    """Accept or reject a newly-created scoped ACP access request (FR-24).
+
+    event is one drained job.created event (see acp_cli.drain_events),
+    expected to carry {"job_id": ..., "requirement": {"tier":
+    "reference"|"warm", "key": ...}} (reference) or {"tier": "warm",
+    "kind": ..., "name": ...} (an entity). Any other tier is rejected
+    outright — FR-24 explicitly scopes grants to REFERENCE/WARM only,
+    never HOT/COLD/ARCHIVE.
+
+    Only proposes a budget here (the accept-equivalent) — actually
+    delivering the data happens in deliver_access_grant, once the buyer
+    has funded the job. Confirmed live against a real job that the
+    protocol itself rejects a deliverable submitted before funding, so
+    accept and deliver must be two separate steps, not one.
     """
     job_id = event["job_id"]
     requirement = event.get("requirement") or {}
@@ -73,23 +91,35 @@ def handle_access_request(memory: BrandMemory, event: dict[str, Any]) -> None:
         reject_job(job_id, f"tier {tier!r} is not eligible for an ACP access grant")
         return
 
-    if tier == "reference":
-        key = requirement.get("key")
-        data = memory.get_reference(key)
-    else:
-        kind = requirement.get("kind", "character")
-        name = requirement.get("name")
-        data = memory.get_entity(kind, name)
+    if _fetch_grant_data(memory, requirement) is None:
+        reject_job(job_id, f"no {tier} data found for the requested key")
+        return
+
+    accept_job(job_id, DEFAULT_GRANT_PRICE_USDC)
+
+
+def deliver_access_grant(memory: BrandMemory, event: dict[str, Any]) -> None:
+    """Deliver a previously-accepted access grant once the job is funded (FR-24).
+
+    event carries the same {"job_id": ..., "requirement": {...}} shape as
+    handle_access_request — called from a job.funded-type event, after
+    the buyer has funded the budget handle_access_request proposed.
+    Journals the fulfilled grant (brand_id, requester, tier, key) per the
+    PRD's own risk mitigation for cross-agent memory access.
+    """
+    job_id = event["job_id"]
+    requirement = event.get("requirement") or {}
+    tier = requirement.get("tier")
+    data = _fetch_grant_data(memory, requirement)
 
     if data is None:
         reject_job(job_id, f"no {tier} data found for the requested key")
         return
 
-    accept_job(job_id, DEFAULT_GRANT_PRICE_USDC)
     submit_deliverable(job_id, str({"data": data}))
 
     memory.write_event(
-        acted=[f"granted ACP access to {tier} data for job {job_id}"],
+        acted=[f"delivered ACP access grant for {tier} data, job {job_id}"],
         extra={
             "brand_id": memory.brand_id,
             "requesting_agent": event.get("client_address"),
