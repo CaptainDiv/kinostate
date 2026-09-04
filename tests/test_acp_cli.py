@@ -161,6 +161,23 @@ def test_create_custom_job_builds_expected_argv(monkeypatch):
     ]
 
 
+def test_create_custom_job_passes_explicit_evaluator(monkeypatch):
+    captured = {}
+
+    def _fake_run(args, capture_output, text, env):
+        captured["args"] = args
+        return _FakeCompletedProcess(stdout='{"jobId": "1"}')
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+    create_custom_job("0xProvider", "some description", evaluator_address="0xEvaluator", chain_id=8453)
+
+    assert captured["args"] == [
+        _FAKE_ACP_PATH, "client", "create-custom-job", "--provider", "0xProvider",
+        "--description", "some description", "--chain-id", "8453", "--evaluator", "0xEvaluator", "--json",
+    ]
+
+
 def test_chain_id_follows_is_testnet_not_a_hardcoded_default(monkeypatch):
     # Regression test: accept_job used to default chain_id to a hardcoded
     # testnet constant regardless of IS_TESTNET, which fails outright

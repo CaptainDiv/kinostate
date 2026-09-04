@@ -85,12 +85,20 @@ def use_agent(agent_id: str) -> dict:
     return _run_acp("agent", "use", "--agent-id", agent_id)
 
 
-def create_custom_job(provider_address: str, description: str, chain_id: int | None = None) -> dict:
-    """Create a freeform on-chain job as the currently active (buyer) agent."""
+def create_custom_job(
+    provider_address: str, description: str, evaluator_address: str | None = None, chain_id: int | None = None
+) -> dict:
+    """Create a freeform on-chain job as the currently active (buyer) agent.
+
+    evaluator_address defaults to the buyer's own address (the CLI's own
+    default) when omitted — pass it explicitly to assign a different
+    agent (e.g. the provider) as evaluator.
+    """
     chain_id = chain_id if chain_id is not None else _default_chain_id()
-    return _run_acp(
-        "client", "create-custom-job", "--provider", provider_address, "--description", description, "--chain-id", str(chain_id)
-    )
+    args = ["client", "create-custom-job", "--provider", provider_address, "--description", description, "--chain-id", str(chain_id)]
+    if evaluator_address is not None:
+        args += ["--evaluator", evaluator_address]
+    return _run_acp(*args)
 
 
 def drain_events(events_file: str, limit: int = 10) -> list[dict]:
