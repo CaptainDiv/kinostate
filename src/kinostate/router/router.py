@@ -3,10 +3,14 @@
 Most adapters are still stubs — `_call_model` returns a mock output
 reference for them so the full pipeline (route -> compile -> validate ->
 "generate" -> journal) stays exercisable end-to-end without credentials.
-`kling_o1_reference` and `seedance` are real: they're routed through
-fal.ai (see `router.clients.fal_client`) instead of mocked. Wiring up a new
-live model later means one adapter file (exporting its fal model path)
-plus one new REAL_MODELS entry below — nothing else in this module changes.
+`minimax_h3`, `xai_grok_imagine_video`, and `gemini_omni_flash` are real:
+they're routed through fal.ai (see `router.clients.fal_client`) instead
+of mocked. `kling_o1_reference`/`seedance` were real in an earlier pass
+but are dormant now (cheaper alternatives replaced them) — the adapter
+files stay, just no longer listed in REAL_MODELS below, so they mock
+like every other stub adapter. Wiring up a new live model later means one
+adapter file (exporting its fal model path) plus one new REAL_MODELS
+entry below — nothing else in this module changes.
 """
 
 from __future__ import annotations
@@ -16,8 +20,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from kinostate.compiler.adapters import ADAPTERS
-from kinostate.compiler.adapters.kling_o1_reference import FAL_MODEL_PATH as KLING_O1_MODEL_PATH
-from kinostate.compiler.adapters.seedance import FAL_MODEL_PATH as SEEDANCE_MODEL_PATH
+from kinostate.compiler.adapters.gemini_omni_flash import FAL_MODEL_PATH as GEMINI_OMNI_FLASH_MODEL_PATH
+from kinostate.compiler.adapters.minimax_h3 import FAL_MODEL_PATH as MINIMAX_H3_MODEL_PATH
+from kinostate.compiler.adapters.xai_grok_imagine_video import FAL_MODEL_PATH as XAI_GROK_MODEL_PATH
 from kinostate.compiler.base_adapter import ModelAdapter
 from kinostate.compiler.canonical import GenerationRequest
 from kinostate.memory.tenant_store import BrandMemory
@@ -30,8 +35,9 @@ DEFAULT_CONFIDENCE = 0.5
 # stub below. Unlike wireflow, fal needs no per-model workflow id — just
 # FAL_KEY (checked inside fal_client) and the model's own path.
 REAL_MODELS: dict[str, str] = {
-    "kling_o1_reference": KLING_O1_MODEL_PATH,
-    "seedance": SEEDANCE_MODEL_PATH,
+    "minimax_h3": MINIMAX_H3_MODEL_PATH,
+    "xai_grok_imagine_video": XAI_GROK_MODEL_PATH,
+    "gemini_omni_flash": GEMINI_OMNI_FLASH_MODEL_PATH,
 }
 
 

@@ -53,6 +53,21 @@ def resolve_duration_seconds(model_name: str, duration_seconds: float, allowed_s
     return duration
 
 
+def resolve_duration_in_range(model_name: str, duration_seconds: float, min_seconds: int, max_seconds: int) -> int:
+    """Round to the nearest whole second and check it against a model's real integer range.
+
+    Some models (unlike Kling/Seedance's fixed string enums) take a free
+    integer duration within a min/max range instead — same fail-loudly
+    reasoning as resolve_duration_seconds, just a different real shape.
+    """
+    duration = round(duration_seconds)
+    if not (min_seconds <= duration <= max_seconds):
+        raise PayloadValidationError(
+            f"{model_name} only supports duration_seconds between {min_seconds} and {max_seconds}, got {duration_seconds}"
+        )
+    return duration
+
+
 @dataclass
 class CompiledPayload:
     model_name: str

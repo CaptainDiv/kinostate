@@ -40,6 +40,13 @@ class GenerationRequest:
     brand_id: str
     entities: list[Entity]
     style_prompt: str
-    duration_seconds: float = 4.0
-    resolution: str = "1080p"
+    # 5s is the real shared minimum duration across the three live fal.ai
+    # adapters (minimax_h3: 5-15, xai_grok_imagine_video: 1-10,
+    # gemini_omni_flash: 3-10) -- lower defaults here would fail validation
+    # against minimax_h3 specifically.
+    duration_seconds: float = 5.0
+    # "480p" is the cheapest tier each live adapter maps to (or falls back
+    # to its own cheapest tier for, where "480p" isn't literally one of its
+    # enum values) -- "1080p" isn't a valid choice for any of them.
+    resolution: str = "480p"
     model_override: str | None = None  # FR-13: manual override of routing

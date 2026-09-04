@@ -1,11 +1,11 @@
 """End-to-end CLI demo of the Kinostate pipeline.
 
 Onboards a brand, defines a character, requests a shot on one *real* model
-(via fal.ai), then requests another shot of the *same* character on a
-different real model from a brand-new BrandMemory instance — demonstrating
-PRD Key User Flow #3 (fresh-session recall across a model switch) against
-actual generated video, not a mock:// stub — and prints the resulting COLD
-journal.
+(via fal.ai), then requests two more shots of the *same* character on two
+different real models, each from a brand-new BrandMemory instance —
+demonstrating PRD Key User Flow #3 (fresh-session recall across a model
+switch) across *two consecutive* switches against actual generated video,
+not a mock:// stub — and prints the resulting COLD journal.
 
 Requires FAL_KEY to be set (see .env.example) and spends real fal.ai
 balance on each run — this is the one deliberately minimal live smoke test
@@ -76,12 +76,12 @@ def main() -> None:
         approval_status="approved",
     )
 
-    # 2. First generation, forced onto Kling O1 Reference (real, via fal.ai).
+    # 2. First generation, forced onto Minimax H3 (real, via fal.ai).
     request_one = GenerationRequest(
         brand_id="acme",
         entities=[aria],
         style_prompt="Aria waving at the camera in a sunlit park",
-        model_override="kling_o1_reference",
+        model_override="minimax_h3",
     )
     result_one = route_and_generate(memory, request_one, RoutingPolicy())
     qa_one = run_qa(memory, "aria", result_one["model"], result_one["generation_id"], result_one["output_asset"])
@@ -115,7 +115,7 @@ def main() -> None:
         brand_id="acme",
         entities=[aria],
         style_prompt="Aria running along the same park path at dusk",
-        model_override="seedance",
+        model_override="xai_grok_imagine_video",
     )
     result_two = route_and_generate(fresh_session_memory, request_two, RoutingPolicy())
     qa_two = run_qa(
@@ -124,9 +124,25 @@ def main() -> None:
     print(f"Generation 2 (fresh session, different model): model={result_two['model']} qa_passed={qa_two.passed}")
     print(f"  output_asset={result_two['output_asset']}\n")
 
-    # 4. Print the COLD journal to show both generations + both QA events.
+    # 3b. Second consecutive fresh session + model switch, proving the
+    #     memory survives more than just one switch.
+    second_fresh_session_memory = BrandMemory.open("acme", memory_dir=memory_dir)
+    request_three = GenerationRequest(
+        brand_id="acme",
+        entities=[aria],
+        style_prompt="Aria looking back over her shoulder at dusk",
+        model_override="gemini_omni_flash",
+    )
+    result_three = route_and_generate(second_fresh_session_memory, request_three, RoutingPolicy())
+    qa_three = run_qa(
+        second_fresh_session_memory, "aria", result_three["model"], result_three["generation_id"], result_three["output_asset"]
+    )
+    print(f"Generation 3 (second fresh session, third model): model={result_three['model']} qa_passed={qa_three.passed}")
+    print(f"  output_asset={result_three['output_asset']}\n")
+
+    # 4. Print the COLD journal to show all three generations + QA events.
     print("COLD journal:")
-    for event in fresh_session_memory.read_events(limit=10):
+    for event in second_fresh_session_memory.read_events(limit=10):
         print(json.dumps(event, indent=2, default=str))
 
 
